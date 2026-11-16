@@ -9,16 +9,16 @@ Os clientes consultam a API de pedidos para descobrir mudanças de status. O des
 
 ## Escopo
 
-Inclui configuração de endpoints e filtros, rotação de segredo, captura de transições, worker, histórico das últimas 100 entregas, retentativas e replay administrativo. Email de fallback, dashboard, rate limiting de saída e arquivamento ficam fora desta fase. [Transcrição, 09:08, 09:21–09:22, 09:31–09:40 e 09:48](../TRANSCRICAO.md)
+Inclui configuração de endpoints e filtros, rotação de segredo, captura de transições, worker, histórico das últimas 100 tentativas concluídas, retentativas e replay administrativo. Email de fallback, dashboard, rate limiting de saída e arquivamento ficam fora desta fase. [Transcrição, 09:08, 09:21–09:22, 09:31–09:40 e 09:48](../TRANSCRICAO.md)
 
 ## Modelo de dados proposto
 
 | Tabela | Dados e restrições |
 | --- | --- |
-| `webhook_endpoints` | UUID, cliente, URL HTTPS, estado ativo, lista de valores `OrderStatus`, segredo atual e anterior protegido, expiração do anterior e timestamps. Índice por cliente e estado. |
-| `webhook_outbox` | UUID da linha, UUID do evento, ID do endpoint, ID do pedido, snapshot JSON serializado em UTF-8, status, contador de tentativas, próxima tentativa, expiração da reserva e timestamps. Índice para busca por status e próxima tentativa. Priorizar `created_at` com UUID da linha como desempate. Uma entrega por par evento e endpoint. |
-| `webhook_deliveries` | UUID, ID do endpoint, ID do evento, número da tentativa no ciclo, resultado, código e corpo da resposta quando disponíveis, duração em milissegundos, referência ao snapshot e timestamp. Índice por endpoint e timestamp para listar as últimas 100 tentativas. |
-| `webhook_dead_letter` | UUID, referência à entrega na outbox, UUID original do evento, endpoint, snapshot, motivo, timestamp da falha e dados de auditoria do replay. |
+| `webhook_endpoints` | UUID, cliente, URL HTTPS, estado ativo, lista de valores `OrderStatus`, segredo atual protegido e timestamps. Para uma rotação, o desenho prevê segredo anterior protegido e sua expiração. O armazenamento para rotações sucessivas depende da decisão em [RFC-OPEN-06](RFC.md#questões-em-aberto). Índice por cliente e estado. |
+| `webhook_outbox` | UUID da linha, UUID do evento, ID do endpoint, ID do pedido, snapshot JSON serializado em UTF-8, status, número do ciclo, contador no ciclo, próxima tentativa, token e expiração da reserva e timestamps. Índices propostos em (status, próxima tentativa) para filtrar pendências vencidas e em (status, created_at, UUID) para apoiar a ordem de leitura do ADR-002. A consulta aplica o filtro de vencimento antes de ordenar por `created_at` e UUID. Validar o plano com dados representativos. A recuperação de reservas usa a expiração como critério de busca. Uma entrega por par evento e endpoint. |
+| `webhook_deliveries` | UUID, ID do endpoint, ID do evento, número do ciclo e da tentativa, resultado, código e corpo da resposta quando disponíveis, duração em milissegundos, referência ao snapshot e timestamp. Índice por endpoint e timestamp para listar as últimas 100 tentativas. |
+| `webhook_dead_letter` | UUID, referência à entrega na outbox, número do ciclo terminal, UUID original do evento, endpoint, snapshot, motivo, timestamp da falha e timestamp e operador do replay, preenchidos apenas uma vez por entrada. Chave única por linha de outbox e ciclo terminal. |
 
 A granularidade proposta é uma linha de outbox por endpoint elegível, compartilhando o ID do evento entre as entregas da mesma transição. Usar IDs distintos para a linha e para o evento permite acompanhar falhas por destino sem perder a identidade lógica. A remoção proposta desativa o cadastro e preserva as referências históricas. [Outbox e snapshot](adrs/ADR-001-outbox-transacional-mysql.md) · [DLQ](adrs/ADR-004-dlq-e-replay-administrativo.md) · [Identidade do evento](adrs/ADR-006-entrega-at-least-once.md)
 
@@ -36,16 +36,16 @@ A granularidade proposta é uma linha de outbox por endpoint elegível, comparti
 ### FDD-FLUXO-02 — Processamento e retentativas
 
 1. Executar `npm run worker` como processo separado. A cada dois segundos, buscar um lote pequeno de linhas pendentes com próxima tentativa vencida. Processar sequencialmente, priorizando as mais antigas e evitando sobreposição de ciclos.
-2. Para cada linha, reservar por atualização condicional de estado e prazo. Encerrar a transação de reserva antes do HTTP. Em reinício, recuperar reservas expiradas. O prazo deve cobrir o timeout HTTP e a margem de persistência. Vincular a finalização à reserva atual para evitar concluir uma tentativa já recuperada.
-3. Ler URL e segredos válidos na configuração do endpoint. A proposta encerra pendências de endpoints removidos sem enviar HTTP e registra o motivo. Enviar os bytes armazenados com timeout total de 10 segundos. Para a política inicial proposta, aceitar 2xx como sucesso e tratar timeout, falha de rede e respostas fora de 2xx como falhas. A revisão deve confirmar a classificação de erros permanentes.
-4. Em uma transação curta, registrar o resultado no histórico e finalizar a pendência como entregue, reagendar para a próxima tentativa ou gravar a DLQ e marcar falha terminal. Uma falha do processo depois que o destinatário recebeu o corpo e antes dessa transação pode gerar novo envio com o mesmo ID.
+2. Reservar a linha por atualização condicional do estado, com token exclusivo e prazo superior ao timeout HTTP mais a margem de persistência. Ler e validar a configuração do destino antes de abrir a tentativa. Para endpoint removido, a proposta é encerrar a pendência no estado `cancelled`, registrar o motivo e limpar a reserva sob o token vigente. Esse caminho termina sem HTTP, sem consumir orçamento e sem inserir na DLQ.
+3. Para destino elegível, verificar o token e seu prazo e, em transação curta, abrir a tentativa com ciclo e número e incrementar o contador. Essa gravação consome uma tentativa, inclusive se houver queda antes do envio. Uma reserva que expira antes da abertura volta a pendente sem consumir orçamento. Enviar os bytes armazenados com timeout total de 10 segundos. Uma resposta 2xx indica sucesso. Timeout e erro de rede entram no fluxo de retry. A revisão de [RFC-OPEN-07](RFC.md#questões-em-aberto) deve definir quais respostas fora de 2xx são transitórias e quais seguem diretamente à DLQ.
+4. Em uma transação curta, finalizar a tentativa aberta no histórico e marcar a pendência como entregue, reagendar uma falha transitória com orçamento disponível ou inserir a entrada da DLQ e marcar falha terminal após esgotar o orçamento ou classificar o erro como permanente. Condicionar a finalização pelo remetente ao token vigente. A cada ciclo de polling, recuperar também reservas expiradas. Se houver tentativa aberta, fechá-la como resultado indeterminado e aplicar a mesma política de backoff ou DLQ ao orçamento restante. Se o destino tiver recebido o corpo antes da queda, o próximo envio pode duplicá-lo e mantém o mesmo ID.
 5. Manter a sequência de backoff parametrizada. A reunião cita cinco tentativas e intervalos de 1 min, 5 min, 30 min, 2 h e 12 h. Confirmar se são cinco envios totais ou cinco retentativas antes de configurar o último intervalo e fechar os testes dessa política.
 
 [ADR-002](adrs/ADR-002-worker-polling-outbox.md) · [ADR-003](adrs/ADR-003-retentativas-com-backoff.md) · [ADR-006](adrs/ADR-006-entrega-at-least-once.md) · [Transcrição, 09:42](../TRANSCRICAO.md)
 
 ### FDD-FLUXO-03 — Replay
 
-Autenticar o operador e exigir `ADMIN`. Em uma transação, validar a existência da DLQ e a elegibilidade do endpoint, reativar a linha terminal da outbox como pendente, reiniciar a contagem do ciclo e registrar identificação do operador e timestamp. A proposta preserva o snapshot e o ID do evento, mantém o histórico anterior e usa atualização condicional para rejeitar replay concorrente da mesma falha. Depois do commit, o worker retoma o fluxo normal. [ADR-004](adrs/ADR-004-dlq-e-replay-administrativo.md)
+Autenticar o operador e exigir `ADMIN`. Em uma única transação, validar se a entrada da DLQ ainda não foi usada para replay, se o endpoint está ativo e se a outbox segue em falha terminal no ciclo registrado na entrada. Condicionar as atualizações a esse estado. Marcar a entrada com ID do operador e timestamp, reativar a linha da outbox como pendente, avançar o ciclo, zerar o contador, limpar a reserva e definir a próxima tentativa para o instante do replay. Preservar o snapshot, o ID do evento e o histórico. Uma segunda solicitação para a mesma entrada recebe 409, inclusive se houver nova falha terminal. Uma nova falha gera outra entrada da DLQ, vinculada ao novo ciclo e elegível para seu próprio replay. As regras de reserva, contagem e replay por ciclo são propostas de implementação. [ADR-003](adrs/ADR-003-retentativas-com-backoff.md) · [ADR-004](adrs/ADR-004-dlq-e-replay-administrativo.md) · [ADR-006](adrs/ADR-006-entrega-at-least-once.md)
 
 ## Contratos públicos
 
@@ -60,48 +60,82 @@ Os caminhos da tabela são relativos ao prefixo /api/v1 montado pela aplicação
 | `PATCH /webhooks/:id` | `{"statuses":["DELIVERED"]}` | `200` com o cadastro atualizado. URL e filtros são campos editáveis propostos. |
 | `DELETE /webhooks/:id` | — | `204` após desativar o cadastro. |
 | `POST /webhooks/:id/rotate-secret` | — | `200` com o novo segredo e `previous_secret_expires_at`. |
-| `GET /webhooks/:id/deliveries` | — | `200` com até 100 tentativas, da mais recente para a mais antiga. |
+| `GET /webhooks/:id/deliveries` | — | `200` com até 100 tentativas concluídas, da mais recente para a mais antiga. |
 | `POST /admin/webhooks/dead-letter/:id/replay` | — | `202` com `{"status":"pending","event_id":"<uuid>"}` após recolocar na outbox. |
 
-Exemplo de resposta de criação. IDs entre sinais de menor e maior são placeholders.
+Os exemplos usam placeholders para IDs e tokens. Rotação e replay recebem o ID na URL e usam corpo vazio. As leituras de cadastro omitem a credencial. O histórico retorna o snapshot original em `payload`, além dos dados de resposta disponíveis e da duração.
 
-```json
-{
-  "id": "<webhook-uuid>",
-  "customer_id": "<customer-uuid>",
-  "url": "https://cliente.example/events",
-  "statuses": ["SHIPPED", "DELIVERED"],
-  "active": true,
-  "secret": "<secret-gerado>"
-}
+#### Cadastro
+
+```http
+POST /api/v1/customers/<customer-uuid>/webhooks HTTP/1.1
+Host: oms.example
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"url":"https://cliente.example/events","statuses":["SHIPPED","DELIVERED"]}
 ```
 
-As demais leituras de cadastro omitem a credencial. Exemplo de item de histórico, com o snapshot representado pelo campo `payload`.
+```http
+HTTP/1.1 201 Created
+Content-Type: application/json
 
-```json
-{
-  "event_id": "<event-uuid>",
-  "attempt": 1,
-  "status": "delivered",
-  "payload": {"event_type": "order.status_changed", "to_status": "SHIPPED"},
-  "response": {"status_code": 200, "body": "ok"},
-  "duration_ms": 180,
-  "created_at": "2026-11-16T14:30:03Z"
-}
+{"id":"<webhook-uuid>","customer_id":"<customer-uuid>","url":"https://cliente.example/events","statuses":["SHIPPED","DELIVERED"],"active":true,"secret":"<secret-gerado>"}
 ```
 
-Exemplos complementares de resposta para os contratos propostos. A rotação e o replay recebem apenas o ID no caminho e usam corpo vazio.
+#### Edição
 
-| Operação | Requisição | Resposta JSON de exemplo |
-| --- | --- | --- |
-| Alterar filtro | `PATCH /webhooks/<webhook-uuid>` com `{"statuses":["DELIVERED"]}` | `200 {"id":"<webhook-uuid>","customer_id":"<customer-uuid>","url":"https://cliente.example/events","statuses":["DELIVERED"],"active":true}` |
-| Rotacionar segredo | `POST /webhooks/<webhook-uuid>/rotate-secret` sem corpo | `200 {"secret":"<novo-segredo>","previous_secret_expires_at":"2026-11-17T14:30:00Z"}` |
-| Solicitar replay | `POST /admin/webhooks/dead-letter/<dlq-uuid>/replay` sem corpo | `202 {"status":"pending","event_id":"<event-uuid>"}` |
-| Listar cadastros | `GET /customers/<customer-uuid>/webhooks` sem corpo | `200 [{"id":"<webhook-uuid>","customer_id":"<customer-uuid>","url":"https://cliente.example/events","statuses":["DELIVERED"],"active":true}]` |
+```http
+PATCH /api/v1/webhooks/<webhook-uuid> HTTP/1.1
+Host: oms.example
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"statuses":["DELIVERED"]}
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"id":"<webhook-uuid>","customer_id":"<customer-uuid>","url":"https://cliente.example/events","statuses":["DELIVERED"],"active":true}
+```
+
+#### Rotação
+
+```http
+POST /api/v1/webhooks/<webhook-uuid>/rotate-secret HTTP/1.1
+Host: oms.example
+Authorization: Bearer <token>
+Content-Length: 0
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"secret":"<novo-segredo>","previous_secret_expires_at":"2026-11-17T14:30:00Z"}
+```
+
+#### Replay
+
+```http
+POST /api/v1/admin/webhooks/dead-letter/<dlq-uuid>/replay HTTP/1.1
+Host: oms.example
+Authorization: Bearer <token-admin>
+Content-Length: 0
+```
+
+```http
+HTTP/1.1 202 Accepted
+Content-Type: application/json
+
+{"status":"pending","event_id":"<event-uuid>"}
+```
 
 ### FDD-CONTRATO-02 — Notificação de saída
 
-O worker faz `POST` à URL HTTPS configurada. O corpo usa o snapshot do evento e o mesmo `event_id` em todas as tentativas, inclusive replay.
+O worker faz `POST` à URL HTTPS configurada. O corpo usa o snapshot do evento e o mesmo `event_id` em todas as tentativas, inclusive replay. O número do pedido vem de `order.orderNumber`. [Formato gerado pelo OMS](../src/modules/orders/order.service.ts#L253)
 
 ```json
 {
@@ -109,7 +143,7 @@ O worker faz `POST` à URL HTTPS configurada. O corpo usa o snapshot do evento e
   "event_type": "order.status_changed",
   "timestamp": "2026-11-16T14:30:00Z",
   "order_id": "470a7438-4dc3-4656-9dea-c73d7f0f9213",
-  "order_number": "ORD-2026-00042",
+  "order_number": "ORD-000042",
   "from_status": "PROCESSING",
   "to_status": "SHIPPED",
   "customer_id": "2b41cb89-56bc-46ae-84ae-f2ffc20129bc",
@@ -125,7 +159,7 @@ O worker faz `POST` à URL HTTPS configurada. O corpo usa o snapshot do evento e
 | `X-Timestamp` | Instante do envio em ISO 8601, formato proposto |
 | `X-Signature` | HMAC-SHA256 calculado sobre os bytes exatos do corpo |
 
-Para concretizar a janela de rotação, propõe-se codificar o HMAC em hexadecimal e usar `v1=<assinatura-atual>`, acrescido de `,v1=<assinatura-anterior>` enquanto ambas as credenciais estiverem válidas. O consumidor valida o corpo bruto com seu segredo e comparação em tempo constante. O timestamp de envio é metadado. O HMAC acordado cobre o corpo. Geração, armazenamento dos segredos, formato final da assinatura e validação de destinos passam pela revisão de segurança. [ADR-005](adrs/ADR-005-assinatura-hmac-por-endpoint.md) · [ADR-008](adrs/ADR-008-contrato-do-evento-de-status.md)
+Para concretizar a janela de rotação, propõe-se codificar o HMAC em hexadecimal e usar `v1=<assinatura-atual>`, acrescido de `,v1=<assinatura-anterior>` enquanto ambas as credenciais estiverem válidas. Uma segunda rotação dentro da janela precisa preservar a validade acordada da credencial anterior. A revisão deve definir se a API adia a nova rotação ou mantém mais de um segredo anterior válido e como essa escolha afeta o header. O consumidor valida o corpo bruto com seu segredo e comparação em tempo constante. O timestamp de envio é metadado. O HMAC acordado cobre o corpo. Geração, armazenamento dos segredos, formato final da assinatura e validação de destinos passam pela revisão de segurança. [ADR-005](adrs/ADR-005-assinatura-hmac-por-endpoint.md) · [ADR-008](adrs/ADR-008-contrato-do-evento-de-status.md)
 
 ### FDD-ERRO-01 — Matriz de erros
 
@@ -141,7 +175,7 @@ Erros usam o envelope `{"error":{"code":"WEBHOOK_INVALID_URL","message":"A URL d
 | `WEBHOOK_REPLAY_CONFLICT` | 409 | Replay já solicitado ou destino desativado |
 | `WEBHOOK_PAYLOAD_TOO_LARGE` | Falha de captura e rollback | Snapshot excede o limite proposto |
 | `WEBHOOK_DELIVERY_TIMEOUT` | Falha de tentativa | HTTP ultrapassa 10 segundos |
-| `WEBHOOK_DELIVERY_FAILED` | Falha de tentativa | Erro de rede ou resposta fora de 2xx |
+| `WEBHOOK_DELIVERY_FAILED` | Falha de tentativa | Erro de rede ou resposta fora de 2xx. Para respostas HTTP, o encaminhamento a retry ou DLQ depende de RFC-OPEN-07 |
 
 [ADR-007](adrs/ADR-007-reuso-dos-padroes-do-projeto.md) · [Middleware de erros](../src/middlewares/error.middleware.ts)
 
@@ -182,9 +216,9 @@ Como instrumentação proposta, medir tamanho e idade da fila, latência entre c
 | --- | --- |
 | FDD-AC-01 | Em teste de integração, transição elegível grava status, histórico, estoque aplicável e todas as pendências. Simular erro de inserção e verificar rollback de todos os efeitos. |
 | FDD-AC-02 | Transição inválida ou sem inscrição compatível gera zero pendências. Alterar o pedido depois do commit e verificar que o corpo armazenado continua igual. |
-| FDD-AC-03 | Em teste com relógio controlado e servidor HTTP de teste, verificar polling, timeout, backoff acordado e registro da falha terminal na DLQ. Simular reinício com reserva vencida e verificar recuperação. |
+| FDD-AC-03 | Em teste com relógio controlado e servidor HTTP de teste, verificar polling, timeout, backoff acordado e registro da falha terminal na DLQ. Verificar que remover o endpoint antes da validação do destino encerra a pendência como cancelled sem tentativa nem DLQ. Simular expiração antes e depois de abrir a tentativa. Verificar consumo do orçamento apenas após a abertura, backoff ou DLQ no resultado indeterminado e rejeição de finalização com token expirado ou substituído. |
 | FDD-AC-04 | Simular resposta perdida após recebimento. A nova tentativa mantém o ID e o corpo. Medir a entrega abaixo de dez segundos no cenário de fila vazia com destino saudável. |
 | FDD-AC-05 | Verificar HMAC sobre o corpo bruto, rejeição de URL sem HTTPS, limite do corpo, aceitação durante rotação e expiração do segredo anterior ao fim de 24 horas. |
-| FDD-AC-06 | Exercitar histórico com 101 tentativas e verificar as 100 mais recentes. Testar 401 sem token, 403 para operador comum e 202 com ADMIN, preservação do evento e auditoria do replay. |
+| FDD-AC-06 | Exercitar histórico com 101 tentativas e verificar as 100 mais recentes. Testar 401 sem token, 403 para operador comum e 202 com ADMIN, preservação do evento e auditoria do replay. Repetir o replay da entrada antiga após outra falha terminal e verificar 409. Usar a entrada do novo ciclo e verificar 202. |
 
 Usar a infraestrutura de integração existente em [`tests/setup.ts`](../tests/setup.ts) e [`tests/orders.test.ts`](../tests/orders.test.ts) como referência para os testes de transação. As confirmações de retry, autorização por cliente e contrato final de rotação são pendências de revisão do desenho.

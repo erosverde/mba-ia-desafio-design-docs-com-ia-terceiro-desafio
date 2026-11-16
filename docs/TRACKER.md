@@ -2,6 +2,10 @@
 
 As linhas marcadas como proposta citam o requisito ou o padrão que motivou o desenho. As fontes de critérios de aceite são as dos requisitos que cada cenário verifica. Os IDs adicionais identificam trechos sem ID próprio nos documentos.
 
+### Como a cobertura foi conferida
+
+O inventário inclui IDs explícitos, decisões principais dos ADRs e itens substantivos sem ID. Cada objetivo, requisito, exclusão, risco, questão em aberto, contrato, fluxo ou decisão de modelagem conta uma vez na sua seção. Parágrafos de contexto, exemplos e testes entram na linha do item que explicam quando compartilham a mesma origem. As linhas de código complementares identificadas com o sufixo `-CODIGO` corroboram itens já contados. As alternativas e consequências dos ADRs são verificadas junto da decisão de cada ADR. O README descreve o processo e usa como evidência os próprios prompts e o histórico do Git.
+
 ## PRD
 
 | ID | Documento | Tipo | Conteúdo (resumo) | Fonte | Localização |
@@ -39,6 +43,15 @@ As linhas marcadas como proposta citam o requisito ou o padrão que motivou o de
 | PRD-DEP-02-CODIGO | [docs/PRD.md](PRD.md) | Referência de código | Base existente para PRD-DEP-02 | CODIGO | [src/modules/orders/order.service.ts](../src/modules/orders/order.service.ts#L126) |
 | PRD-RISCO-01 | [docs/PRD.md](PRD.md) | Pendência | Definir autorização por cliente. JWT atual contém usuário e papel | TRANSCRICAO | [09:32] Larissa, [09:37] Sofia |
 | PRD-RISCO-01-CODIGO | [docs/PRD.md](PRD.md) | Referência de código | Base existente para PRD-RISCO-01 | CODIGO | [src/middlewares/auth.middleware.ts](../src/middlewares/auth.middleware.ts) |
+| PRD-CONTEXTO-01 | [docs/PRD.md](PRD.md) | Contexto | Atlas, MaxDistribuição e Nova Cargo usam polling. A Atlas sinalizou risco de migração e pediu entrega até fim de novembro | TRANSCRICAO | [09:00] Marcos, [09:45] Marcos, [09:47] Marcos |
+| PRD-CENARIO-01 | [docs/PRD.md](PRD.md) | Cenário | Integrador filtra por status, recebe evento e consulta detalhes do pedido quando precisar | TRANSCRICAO | [09:33] Marcos, [09:43] Diego |
+| PRD-CENARIO-02 | [docs/PRD.md](PRD.md) | Cenário | Operação consulta histórico e administração recupera falhas | TRANSCRICAO | [09:34] Marcos, [09:36] Sofia |
+| PRD-TRD-01 | [docs/PRD.md](PRD.md) | Trade-off | Isolar HTTP no worker e reverter transição quando falhar a captura obrigatória | TRANSCRICAO | [09:06] Diego, [09:11] Diego, [09:40] Bruno |
+| PRD-TRD-02 | [docs/PRD.md](PRD.md) | Trade-off | Limitar retry, admitir duplicatas e usar replay após falha terminal | TRANSCRICAO | [09:17] Larissa, [09:18] Diego, [09:26] Larissa |
+| PRD-RISCO-02 | [docs/PRD.md](PRD.md) | Risco | Atraso por destino indisponível. Timeout, backoff e DLQ | TRANSCRICAO | [09:15] Diego, [09:18] Diego, [09:42] Diego |
+| PRD-RISCO-03 | [docs/PRD.md](PRD.md) | Risco | Duplicatas. ID estável e deduplicação no consumidor | TRANSCRICAO | [09:24] Diego, [09:25] Diego, [09:26] Marcos |
+| PRD-RISCO-04 | [docs/PRD.md](PRD.md) | Risco | Vazamento de segredo. Isolamento e rotação | TRANSCRICAO | [09:21] Sofia, [09:22] Sofia |
+| PRD-VALID-01 | [docs/PRD.md](PRD.md) | Estratégia de validação proposta | Cobrir contrato, entrega, rollback, segurança e recuperação com testes de API e integração | TRANSCRICAO | [09:40] Bruno, [09:46] Larissa, [09:46] Sofia |
 
 ## RFC
 
@@ -53,7 +66,8 @@ As linhas marcadas como proposta citam o requisito ou o padrão que motivou o de
 | RFC-OPEN-04 | [docs/RFC.md](RFC.md) | Pendência | Definir retenção e arquivamento de entregues | TRANSCRICAO | [09:08] Diego |
 | RFC-OPEN-05 | [docs/RFC.md](RFC.md) | Pendência | Definir autorização por cliente | TRANSCRICAO | [09:32] Larissa, [09:37] Sofia |
 | RFC-OPEN-05-CODIGO | [docs/RFC.md](RFC.md) | Referência de código | Base existente para RFC-OPEN-05 | CODIGO | [src/middlewares/auth.middleware.ts](../src/middlewares/auth.middleware.ts) |
-| RFC-OPEN-06 | [docs/RFC.md](RFC.md) | Pendência | Validar formato de assinatura para a rotação | TRANSCRICAO | [09:22] Sofia, [09:46] Sofia |
+| RFC-OPEN-06 | [docs/RFC.md](RFC.md) | Pendência | Validar assinatura durante a sobreposição e comportamento de rotações sucessivas em 24 h | TRANSCRICAO | [09:21] Sofia, [09:22] Sofia, [09:46] Sofia |
+| RFC-OPEN-07 | [docs/RFC.md](RFC.md) | Pendência | Classificar respostas fora de 2xx para retry ou DLQ. Timeout segue para retry | TRANSCRICAO | [09:15] Diego, [09:18] Diego, [09:42] Diego |
 | RFC-PROP-01 | [docs/RFC.md](RFC.md) | Decisão | Captura atômica, filtro na inserção e snapshot | TRANSCRICAO | [09:34] Bruno, [09:40] Bruno, [09:52] Larissa |
 | RFC-PROP-02 | [docs/RFC.md](RFC.md) | Decisão | Worker único separado, polling de 2 s e lotes pequenos | TRANSCRICAO | [09:08] Diego, [09:09] Diego, [09:11] Diego, [09:12] Diego, [09:30] Bruno |
 | RFC-PROP-03 | [docs/RFC.md](RFC.md) | Decisão | At-least-once, backoff limitado, DLQ e replay auditado por ADMIN | TRANSCRICAO | [09:17] Larissa, [09:18] Diego, [09:26] Larissa, [09:36] Sofia |
@@ -63,6 +77,7 @@ As linhas marcadas como proposta citam o requisito ou o padrão que motivou o de
 | RFC-RISCO-02 | [docs/RFC.md](RFC.md) | Risco | Indisponibilidade do destino mitigada com timeout, backoff e DLQ | TRANSCRICAO | [09:15] Diego, [09:18] Diego, [09:42] Diego |
 | RFC-RISCO-03 | [docs/RFC.md](RFC.md) | Risco | Duplicatas e risco de inversão na entrega, deduplicação por ID | TRANSCRICAO | [09:12] Diego, [09:13] Larissa, [09:25] Diego |
 | RFC-RISCO-04 | [docs/RFC.md](RFC.md) | Risco | Vazamento de segredo, rotação e revisão de segurança | TRANSCRICAO | [09:21] Sofia, [09:22] Diego, [09:46] Sofia |
+| RFC-CONTEXTO-01 | [docs/RFC.md](RFC.md) | Contexto | Polling B2B motiva entrega assíncrona com captura na transação existente | TRANSCRICAO | [09:00] Marcos, [09:06] Diego, [09:40] Bruno |
 
 ## FDD
 
@@ -70,12 +85,12 @@ As linhas marcadas como proposta citam o requisito ou o padrão que motivou o de
 | --- | --- | --- | --- | --- | --- |
 | FDD-FLUXO-01 | [docs/FDD.md](FDD.md) | Fluxo | Usar o mesmo tx para filtrar, serializar e inserir antes do commit. Limite em bytes é proposta | TRANSCRICAO | [09:24] Larissa, [09:34] Bruno, [09:40] Bruno, [09:41] Bruno, [09:52] Larissa |
 | FDD-FLUXO-01-CODIGO | [docs/FDD.md](FDD.md) | Referência de código | Base existente para FDD-FLUXO-01 | CODIGO | [src/modules/orders/order.service.ts](../src/modules/orders/order.service.ts#L126) |
-| FDD-FLUXO-02 | [docs/FDD.md](FDD.md) | Fluxo | Polling, envio, timeout, histórico, retry e DLQ. Reserva e classificação inicial de respostas são propostas | TRANSCRICAO | [09:08] Diego, [09:09] Diego, [09:17] Larissa, [09:18] Diego, [09:34] Marcos, [09:42] Diego |
-| FDD-FLUXO-03 | [docs/FDD.md](FDD.md) | Fluxo | Recolocar pendência com auditoria. Preservar ID e usar atualização condicional são detalhes propostos | TRANSCRICAO | [09:18] Diego, [09:25] Diego, [09:36] Sofia |
+| FDD-FLUXO-02 | [docs/FDD.md](FDD.md) | Fluxo | Polling, envio, timeout, histórico, retry e DLQ. Validar destino antes de abrir a tentativa. Cancelamento de pendências por remoção é proposta. Classificação HTTP em revisão | TRANSCRICAO | [09:08] Diego, [09:09] Diego, [09:17] Larissa, [09:18] Diego, [09:34] Marcos, [09:42] Diego |
+| FDD-FLUXO-03 | [docs/FDD.md](FDD.md) | Fluxo | Recolocar pendência com auditoria. Preservar ID e vincular replay a uma entrada e a um ciclo são detalhes propostos | TRANSCRICAO | [09:18] Diego, [09:25] Diego, [09:36] Sofia |
 | FDD-FLUXO-03-CODIGO | [docs/FDD.md](FDD.md) | Referência de código | Base existente para FDD-FLUXO-03 | CODIGO | [src/middlewares/auth.middleware.ts](../src/middlewares/auth.middleware.ts#L49) |
 | FDD-CONTRATO-01 | [docs/FDD.md](FDD.md) | Contrato | API autenticada de CRUD, rotação, histórico e replay. Rotas e respostas não explicitadas na reunião são propostas | TRANSCRICAO | [09:21] Sofia, [09:31] Marcos, [09:32] Larissa, [09:33] Bruno, [09:34] Marcos, [09:35] Diego, [09:36] Larissa |
 | FDD-CONTRATO-01-CODIGO | [docs/FDD.md](FDD.md) | Referência de código | Base existente para FDD-CONTRATO-01 | CODIGO | [src/routes/index.ts](../src/routes/index.ts) |
-| FDD-CONTRATO-02 | [docs/FDD.md](FDD.md) | Contrato | JSON do evento e headers. Encoding e duas assinaturas durante rotação são propostas | TRANSCRICAO | [09:22] Sofia, [09:43] Diego, [09:44] Diego, [09:44] Sofia, [09:52] Larissa |
+| FDD-CONTRATO-02 | [docs/FDD.md](FDD.md) | Contrato | JSON do evento e headers. Encoding e duas assinaturas para uma rotação são propostas. Rotações sucessivas seguem em revisão | TRANSCRICAO | [09:22] Sofia, [09:43] Diego, [09:44] Diego, [09:44] Sofia, [09:52] Larissa |
 | FDD-ERRO-01 | [docs/FDD.md](FDD.md) | Contrato | Códigos WEBHOOK_* propostos e envelope existente de AppError | TRANSCRICAO | [09:28] Bruno, [09:29] Larissa |
 | FDD-ERRO-01-CODIGO | [docs/FDD.md](FDD.md) | Referência de código | Base existente para FDD-ERRO-01 | CODIGO | [src/middlewares/error.middleware.ts](../src/middlewares/error.middleware.ts), [src/shared/errors/app-error.ts](../src/shared/errors/app-error.ts) |
 | FDD-DADOS-01 | [docs/FDD.md](FDD.md) | Proposta de modelagem | Configuração, outbox, histórico e DLQ. Uma linha por destino, índices e desativação são detalhes de desenho | TRANSCRICAO | [09:08] Diego, [09:18] Diego, [09:21] Bruno, [09:21] Sofia, [09:34] Marcos, [09:51] Larissa, [09:52] Larissa |
@@ -97,6 +112,21 @@ As linhas marcadas como proposta citam o requisito ou o padrão que motivou o de
 | FDD-AC-05 | [docs/FDD.md](FDD.md) | Critério de aceite | Testar HMAC, HTTPS, tamanho e expiração do segredo anterior | TRANSCRICAO | [09:22] Sofia, [09:23] Sofia, [09:24] Larissa |
 | FDD-AC-06 | [docs/FDD.md](FDD.md) | Critério de aceite | Testar as 100 tentativas mais recentes, permissões e auditoria de replay | TRANSCRICAO | [09:34] Marcos, [09:36] Sofia, [09:36] Larissa |
 | FDD-AC-06-CODIGO | [docs/FDD.md](FDD.md) | Referência de código | Base existente para FDD-AC-06 | CODIGO | [src/middlewares/auth.middleware.ts](../src/middlewares/auth.middleware.ts#L49) |
+| FDD-OBJ-01 | [docs/FDD.md](FDD.md) | Objetivo técnico | Captura atômica, latência abaixo de 10 s em condições normais e recuperação assíncrona | TRANSCRICAO | [09:02] Marcos, [09:06] Diego, [09:18] Diego |
+| FDD-ESCOPO-01 | [docs/FDD.md](FDD.md) | Exclusão | Arquivamento, email, rate limiting e painel adiados ou fora do escopo | TRANSCRICAO | [09:08] Diego, [09:37] Larissa, [09:39] Larissa, [09:40] Larissa |
+| FDD-DADOS-02 | [docs/FDD.md](FDD.md) | Proposta de modelagem | Cadastro por cliente e estado, filtros e segredo anterior com expiração | TRANSCRICAO | [09:21] Bruno, [09:21] Sofia, [09:33] Marcos |
+| FDD-DADOS-03 | [docs/FDD.md](FDD.md) | Proposta de modelagem | Outbox por destino. Índices propostos para vencimento e ordem de criação | TRANSCRICAO | [09:08] Diego, [09:09] Diego, [09:17] Larissa, [09:34] Bruno |
+| FDD-DADOS-04 | [docs/FDD.md](FDD.md) | Proposta de modelagem | Histórico por destino com estado da tentativa, resposta, duração e snapshot | TRANSCRICAO | [09:34] Marcos, [09:52] Larissa |
+| FDD-DADOS-05 | [docs/FDD.md](FDD.md) | Proposta de modelagem | DLQ com payload, motivo, timestamp e auditoria. Entrada única por ciclo é detalhe proposto | TRANSCRICAO | [09:18] Diego, [09:36] Sofia |
+| FDD-RES-01 | [docs/FDD.md](FDD.md) | Proposta de resiliência | Reserva sem envio aberto pode expirar sem custo. Tentativa aberta consome orçamento e tem resultado indeterminado na recuperação | TRANSCRICAO | [09:09] Diego, [09:17] Larissa, [09:25] Diego, [09:42] Diego |
+| FDD-RES-02 | [docs/FDD.md](FDD.md) | Proposta de resiliência | Replay de uso único por entrada da DLQ. Novo ciclo terminal gera nova entrada e preserva a identidade do evento | TRANSCRICAO | [09:18] Diego, [09:25] Diego, [09:36] Sofia |
+| FDD-CONTRATO-02-FORMATO | [docs/FDD.md](FDD.md) | Compatibilidade | Copiar order.orderNumber para order_number. O exemplo usa ORD-000042 conforme o gerador existente | CODIGO | [src/modules/orders/order.service.ts](../src/modules/orders/order.service.ts#L253) |
+| FDD-RISCO-01 | [docs/FDD.md](FDD.md) | Risco | Backlog e pressão no MySQL. Limitar lotes e acompanhar idade da fila | TRANSCRICAO | [09:07] Bruno, [09:08] Diego |
+| FDD-RISCO-02 | [docs/FDD.md](FDD.md) | Risco | Duplicata e inversão com retry. Preservar ID e rever ordenação se houver múltiplos workers | TRANSCRICAO | [09:12] Diego, [09:13] Larissa, [09:25] Diego |
+| FDD-RISCO-03 | [docs/FDD.md](FDD.md) | Pendência | Autorização por cliente e acesso aos dados de resposta | TRANSCRICAO | [09:32] Larissa, [09:34] Marcos, [09:37] Sofia |
+| FDD-RISCO-04 | [docs/FDD.md](FDD.md) | Proposta de mitigação | Revisar segredos, HTTPS e validação de destinos antes do deploy | TRANSCRICAO | [09:21] Sofia, [09:23] Sofia, [09:46] Sofia |
+| FDD-RISCO-05 | [docs/FDD.md](FDD.md) | Risco | Falha persistente requer DLQ e replay auditado. Destino pode continuar indisponível | TRANSCRICAO | [09:15] Diego, [09:18] Diego, [09:36] Sofia |
+| FDD-DEP-01 | [docs/FDD.md](FDD.md) | Proposta de implantação | Aplicar migração antes de ativar captura e iniciar worker separado no MySQL existente | TRANSCRICAO | [09:08] Larissa, [09:11] Diego, [09:30] Bruno, [09:40] Bruno |
 
 ## ADRs
 

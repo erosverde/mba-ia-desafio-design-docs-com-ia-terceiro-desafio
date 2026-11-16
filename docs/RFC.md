@@ -21,7 +21,7 @@ Hoje, [`OrderService.changeStatus`](../src/modules/orders/order.service.ts#L126)
 
 1. **Captura atômica.** Registrar na outbox do MySQL um snapshot do evento de mudança para o qual haja inscrição do cliente. A falha de gravação reverte a transação do pedido. A publicação HTTP ocorre em processo separado, após o commit.
 2. **Processamento assíncrono.** Um único worker usa o mesmo MySQL e seu próprio Prisma Client. A cada dois segundos, busca um lote pequeno de pendências elegíveis, priorizando os registros mais antigos. A latência de entrega também depende da fila, do tempo de resposta do destino e das retentativas.
-3. **Confiabilidade.** Adotar entrega at-least-once com `X-Event-Id` estável para deduplicação pelo destinatário. Repetir falhas transitórias com backoff limitado. Persistir falhas terminais em uma DLQ separada e oferecer replay manual com papel `ADMIN` e registro de quem o solicitou.
+3. **Confiabilidade.** Adotar entrega at-least-once com `X-Event-Id` estável para deduplicação pelo destinatário. Repetir falhas transitórias com backoff limitado. A classificação das respostas HTTP fora de 2xx para retry ou DLQ está em revisão. Persistir falhas terminais em uma DLQ separada e oferecer replay manual com papel `ADMIN` e registro de quem o solicitou.
 4. **Autenticação da notificação.** Exigir HTTPS e assinar o corpo com HMAC-SHA256. Cada endpoint tem seu próprio segredo e a rotação oferece uma janela de sobreposição de 24 horas.
 5. **Operação pela API.** Oferecer cadastro, edição, remoção e listagem de endpoints, filtros por status e histórico de entregas. O JWT atual identifica usuário e papel. A regra de acesso ao cliente informado está em revisão antes de expor as rotas a usuários externos. Reutilizar a estrutura modular existente, schemas Zod, `AppError`, middleware central de erros e logging Pino.
 
@@ -44,7 +44,8 @@ Hoje, [`OrderService.changeStatus`](../src/modules/orders/order.service.ts#L126)
 | RFC-OPEN-03 | Qual estratégia de ordenação por pedido adotar se a carga exigir múltiplos workers? Particionamento por pedido e lock pessimista foram levantados para avaliação futura. | [09:12–09:14](../TRANSCRICAO.md) |
 | RFC-OPEN-04 | Qual política de retenção e arquivamento aplicar à outbox? A reunião mencionou cerca de 30 dias para registros entregues e adiou o trabalho de arquivamento. | [09:08](../TRANSCRICAO.md) |
 | RFC-OPEN-05 | Como vincular usuários autenticados aos clientes cujos endpoints e históricos podem acessar? A reunião definiu o cliente como parâmetro explícito e o JWT atual identifica usuário e papel. | [09:31–09:37](../TRANSCRICAO.md) · [Código de autenticação](../src/middlewares/auth.middleware.ts) |
-| RFC-OPEN-06 | Qual formato de assinatura permite usar os dois segredos durante as 24 horas de rotação? O FDD propõe um formato para revisão de segurança. | [09:21–09:22 e 09:46–09:49](../TRANSCRICAO.md) |
+| RFC-OPEN-06 | Qual formato permite a sobreposição dos segredos por 24 horas e como tratar nova rotação dentro dessa janela? Avaliar adiar a segunda rotação ou manter vários segredos anteriores válidos. | [09:21–09:22 e 09:46–09:49](../TRANSCRICAO.md) |
+| RFC-OPEN-07 | Quais respostas HTTP fora de 2xx devem gerar retry e quais são falhas terminais? A reunião definiu retry após timeout e DLQ após esgotar tentativas. A classificação dos códigos HTTP precisa de revisão. | [09:15–09:19 e 09:42](../TRANSCRICAO.md) |
 
 ## Impacto e riscos
 
