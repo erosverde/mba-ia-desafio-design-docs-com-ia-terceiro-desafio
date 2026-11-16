@@ -46,6 +46,7 @@ Hoje, [`OrderService.changeStatus`](../src/modules/orders/order.service.ts#L126)
 | RFC-OPEN-05 | Como vincular usuários autenticados aos clientes cujos endpoints e históricos podem acessar? A reunião definiu o cliente como parâmetro explícito e o JWT atual identifica usuário e papel. | [09:31–09:37](../TRANSCRICAO.md) · [Código de autenticação](../src/middlewares/auth.middleware.ts) |
 | RFC-OPEN-06 | Qual formato permite a sobreposição dos segredos por 24 horas e como tratar nova rotação dentro dessa janela? Avaliar adiar a segunda rotação ou manter vários segredos anteriores válidos. | [09:21–09:22 e 09:46–09:49](../TRANSCRICAO.md) |
 | RFC-OPEN-07 | Quais respostas HTTP fora de 2xx devem gerar retry e quais são falhas terminais? A reunião definiu retry após timeout e DLQ após esgotar tentativas. A classificação dos códigos HTTP precisa de revisão. | [09:15–09:19 e 09:42](../TRANSCRICAO.md) |
+| RFC-OPEN-08 | Com um único worker, um evento em backoff deve bloquear o envio de eventos posteriores do mesmo pedido para o mesmo endpoint? Bloquear preserva a ordem das tentativas entre esses eventos, mas atrasa os seguintes. Liberar permite que um status posterior chegue primeiro. A reunião definiu a ordem de leitura com um worker e deixou o efeito das retentativas em aberto. | [09:12–09:17](../TRANSCRICAO.md) |
 
 ## Impacto e riscos
 

@@ -35,7 +35,7 @@ A granularidade proposta é uma linha de outbox por endpoint elegível, comparti
 
 ### FDD-FLUXO-02 — Processamento e retentativas
 
-1. Executar `npm run worker` como processo separado. A cada dois segundos, buscar um lote pequeno de linhas pendentes com próxima tentativa vencida. Processar sequencialmente, priorizando as mais antigas e evitando sobreposição de ciclos.
+1. Executar `npm run worker` como processo separado. A cada dois segundos, buscar um lote pequeno de linhas pendentes com próxima tentativa vencida. Processar sequencialmente, priorizando as mais antigas e evitando sobreposição de ciclos. Entre as elegíveis, uma pendência posterior pode avançar enquanto outra do mesmo pedido e endpoint aguarda o backoff. A decisão sobre bloquear esse avanço permanece em [RFC-OPEN-08](RFC.md#questões-em-aberto).
 2. Reservar a linha por atualização condicional do estado, com token exclusivo e prazo superior ao timeout HTTP mais a margem de persistência. Ler e validar a configuração do destino antes de abrir a tentativa. Para endpoint removido, a proposta é encerrar a pendência no estado `cancelled`, registrar o motivo e limpar a reserva sob o token vigente. Esse caminho termina sem HTTP, sem consumir orçamento e sem inserir na DLQ.
 3. Para destino elegível, verificar o token e seu prazo e, em transação curta, abrir a tentativa com ciclo e número e incrementar o contador. Essa gravação consome uma tentativa, inclusive se houver queda antes do envio. Uma reserva que expira antes da abertura volta a pendente sem consumir orçamento. Enviar os bytes armazenados com timeout total de 10 segundos. Uma resposta 2xx indica sucesso. Timeout e erro de rede entram no fluxo de retry. A revisão de [RFC-OPEN-07](RFC.md#questões-em-aberto) deve definir quais respostas fora de 2xx são transitórias e quais seguem diretamente à DLQ.
 4. Em uma transação curta, finalizar a tentativa aberta no histórico e marcar a pendência como entregue, reagendar uma falha transitória com orçamento disponível ou inserir a entrada da DLQ e marcar falha terminal após esgotar o orçamento ou classificar o erro como permanente. Condicionar a finalização pelo remetente ao token vigente. A cada ciclo de polling, recuperar também reservas expiradas. Se houver tentativa aberta, fechá-la como resultado indeterminado e aplicar a mesma política de backoff ou DLQ ao orçamento restante. Se o destino tiver recebido o corpo antes da queda, o próximo envio pode duplicá-lo e mantém o mesmo ID.
@@ -161,6 +161,66 @@ O worker faz `POST` à URL HTTPS configurada. O corpo usa o snapshot do evento e
 
 Para concretizar a janela de rotação, propõe-se codificar o HMAC em hexadecimal e usar `v1=<assinatura-atual>`, acrescido de `,v1=<assinatura-anterior>` enquanto ambas as credenciais estiverem válidas. Uma segunda rotação dentro da janela precisa preservar a validade acordada da credencial anterior. A revisão deve definir se a API adia a nova rotação ou mantém mais de um segredo anterior válido e como essa escolha afeta o header. O consumidor valida o corpo bruto com seu segredo e comparação em tempo constante. O timestamp de envio é metadado. O HMAC acordado cobre o corpo. Geração, armazenamento dos segredos, formato final da assinatura e validação de destinos passam pela revisão de segurança. [ADR-005](adrs/ADR-005-assinatura-hmac-por-endpoint.md) · [ADR-008](adrs/ADR-008-contrato-do-evento-de-status.md)
 
+### FDD-CONTRATO-03 — Histórico de entregas
+
+O contrato proposto retorna um array de até 100 tentativas finalizadas, da mais recente para a mais antiga, ordenadas pela abertura da tentativa e com desempate pelo ID da linha. `cycle` identifica o ciclo da entrega, e `attempt` é o número dentro dele. Cada entrada traz o snapshot enviado ou preparado para envio. `response` contém código e corpo quando registrados. Em timeout sem resposta completa ou resultado indeterminado, vale `null`. `duration_ms` registra a duração medida e vale `null` quando o worker perdeu a medição. Um resultado indeterminado indica que a tentativa foi aberta e a reserva expirou antes de o worker persistir seu resultado. [Transcrição, 09:34 e 09:42](../TRANSCRICAO.md) · [Fluxo de recuperação](#fdd-fluxo-02--processamento-e-retentativas)
+
+```http
+GET /api/v1/webhooks/<webhook-uuid>/deliveries HTTP/1.1
+Host: oms.example
+Authorization: Bearer <token>
+Accept: application/json
+Content-Length: 0
+```
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+[
+  {
+    "event_id": "0db9e705-31e5-4fb0-ad34-cad8879df682",
+    "cycle": 1,
+    "attempt": 2,
+    "status": "indeterminate",
+    "payload": {
+      "event_id": "0db9e705-31e5-4fb0-ad34-cad8879df682",
+      "event_type": "order.status_changed",
+      "timestamp": "2026-11-16T14:30:00Z",
+      "order_id": "470a7438-4dc3-4656-9dea-c73d7f0f9213",
+      "order_number": "ORD-000042",
+      "from_status": "PROCESSING",
+      "to_status": "SHIPPED",
+      "customer_id": "2b41cb89-56bc-46ae-84ae-f2ffc20129bc",
+      "total_cents": 15990
+    },
+    "response": null,
+    "duration_ms": null,
+    "created_at": "2026-11-16T14:31:13Z"
+  },
+  {
+    "event_id": "0db9e705-31e5-4fb0-ad34-cad8879df682",
+    "cycle": 1,
+    "attempt": 1,
+    "status": "timeout",
+    "payload": {
+      "event_id": "0db9e705-31e5-4fb0-ad34-cad8879df682",
+      "event_type": "order.status_changed",
+      "timestamp": "2026-11-16T14:30:00Z",
+      "order_id": "470a7438-4dc3-4656-9dea-c73d7f0f9213",
+      "order_number": "ORD-000042",
+      "from_status": "PROCESSING",
+      "to_status": "SHIPPED",
+      "customer_id": "2b41cb89-56bc-46ae-84ae-f2ffc20129bc",
+      "total_cents": 15990
+    },
+    "response": null,
+    "duration_ms": 10000,
+    "created_at": "2026-11-16T14:30:02Z"
+  }
+]
+```
+
 ### FDD-ERRO-01 — Matriz de erros
 
 Erros usam o envelope `{"error":{"code":"WEBHOOK_INVALID_URL","message":"A URL deve usar HTTPS"}}`. Os códigos específicos abaixo são propostas de implementação. Os middlewares existentes mantêm seus códigos de autenticação, autorização e validação genérica.
@@ -219,6 +279,6 @@ Como instrumentação proposta, medir tamanho e idade da fila, latência entre c
 | FDD-AC-03 | Em teste com relógio controlado e servidor HTTP de teste, verificar polling, timeout, backoff acordado e registro da falha terminal na DLQ. Verificar que remover o endpoint antes da validação do destino encerra a pendência como cancelled sem tentativa nem DLQ. Simular expiração antes e depois de abrir a tentativa. Verificar consumo do orçamento apenas após a abertura, backoff ou DLQ no resultado indeterminado e rejeição de finalização com token expirado ou substituído. |
 | FDD-AC-04 | Simular resposta perdida após recebimento. A nova tentativa mantém o ID e o corpo. Medir a entrega abaixo de dez segundos no cenário de fila vazia com destino saudável. |
 | FDD-AC-05 | Verificar HMAC sobre o corpo bruto, rejeição de URL sem HTTPS, limite do corpo, aceitação durante rotação e expiração do segredo anterior ao fim de 24 horas. |
-| FDD-AC-06 | Exercitar histórico com 101 tentativas e verificar as 100 mais recentes. Testar 401 sem token, 403 para operador comum e 202 com ADMIN, preservação do evento e auditoria do replay. Repetir o replay da entrada antiga após outra falha terminal e verificar 409. Usar a entrada do novo ciclo e verificar 202. |
+| FDD-AC-06 | Exercitar histórico com 101 tentativas finalizadas e verificar as 100 mais recentes. Conferir o snapshot completo e os campos nulos para timeout sem resposta e resultado indeterminado sem medição. Testar 401 sem token, 403 para operador comum e 202 com ADMIN, preservação do evento e auditoria do replay. Repetir o replay da entrada antiga após outra falha terminal e verificar 409. Usar a entrada do novo ciclo e verificar 202. |
 
 Usar a infraestrutura de integração existente em [`tests/setup.ts`](../tests/setup.ts) e [`tests/orders.test.ts`](../tests/orders.test.ts) como referência para os testes de transação. As confirmações de retry, autorização por cliente e contrato final de rotação são pendências de revisão do desenho.

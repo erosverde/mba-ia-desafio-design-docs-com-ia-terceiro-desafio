@@ -2,9 +2,21 @@
 
 As linhas marcadas como proposta citam o requisito ou o padrão que motivou o desenho. As fontes de critérios de aceite são as dos requisitos que cada cenário verifica. Os IDs adicionais identificam trechos sem ID próprio nos documentos.
 
-### Como a cobertura foi conferida
+### Inventário e cálculo da cobertura
 
-O inventário inclui IDs explícitos, decisões principais dos ADRs e itens substantivos sem ID. Cada objetivo, requisito, exclusão, risco, questão em aberto, contrato, fluxo ou decisão de modelagem conta uma vez na sua seção. Parágrafos de contexto, exemplos e testes entram na linha do item que explicam quando compartilham a mesma origem. As linhas de código complementares identificadas com o sufixo `-CODIGO` corroboram itens já contados. As alternativas e consequências dos ADRs são verificadas junto da decisão de cada ADR. O README descreve o processo e usa como evidência os próprios prompts e o histórico do Git.
+O denominador vem da leitura dos documentos de origem. Extraia os IDs explícitos nas tabelas e nos títulos do PRD, do RFC e do FDD e os oito números nos títulos dos ADRs. Para as seções sem ID próprio, some os grupos abaixo. As faixas são inclusivas e os prefixos pertencem ao documento indicado.
+
+| Documento | IDs explícitos | Grupos sem ID próprio no documento de origem | Itens identificados |
+| --- | ---: | --- | ---: |
+| [PRD](PRD.md) | 22 | Contexto e motivação (CONTEXTO-01), públicos e cenários (CENARIO-01–02), exclusões (ESCOPO-01–05), decisões e trade-offs (TRD-01–02), dependências (DEP-01–02), riscos (RISCO-01–04), estratégia de validação (VALID-01) | 39 |
+| [RFC](RFC.md) | 11 | Contexto (CONTEXTO-01), cinco pontos da proposta (PROP-01–05), quatro linhas de impacto e risco (RISCO-01–04) | 21 |
+| [FDD](FDD.md) | 13 | Objetivos (OBJ-01), exclusões (ESCOPO-01), modelagem geral e quatro tabelas (DADOS-01–05), resiliência de reserva e replay (RES-01–02), formato do número do pedido (CONTRATO-02-FORMATO), integração (INT-01–03), observabilidade (OBS-01), riscos (RISCO-01–05), implantação e compatibilidade (DEP-01) | 33 |
+| [ADRs](adrs/) | 8 | Cada ADR conta como uma decisão, incluindo contexto, alternativas e consequências | 8 |
+| **Total** | **54** | **47 grupos** | **101** |
+
+O resumo executivo e as listas de escopo que retomam requisitos já inventariados contam junto desses requisitos. Rotas e exemplos de gerenciamento contam em CONTRATO-01, o contrato de saída em CONTRATO-02 e o histórico em CONTRATO-03. O README descreve o processo com base nos prompts e no histórico do Git e fica fora do inventário técnico.
+
+Para reproduzir a conta, expanda as faixas, acrescente o prefixo do documento e procure cada ID nas tabelas abaixo. Conte cada correspondência uma vez, excluindo linhas auxiliares com sufixo `-CODIGO`. Uma linha cuja fonte principal é código, como `FDD-CONTRATO-02-FORMATO`, conta como item próprio. **Cobertura do inventário: 101 mapeados ÷ 101 identificados (100%).** Incluindo as 20 referências complementares, são 121 linhas de evidência, das quais 100 citam a transcrição (82,6%) e 21 citam código.
 
 ## PRD
 
@@ -68,6 +80,7 @@ O inventário inclui IDs explícitos, decisões principais dos ADRs e itens subs
 | RFC-OPEN-05-CODIGO | [docs/RFC.md](RFC.md) | Referência de código | Base existente para RFC-OPEN-05 | CODIGO | [src/middlewares/auth.middleware.ts](../src/middlewares/auth.middleware.ts) |
 | RFC-OPEN-06 | [docs/RFC.md](RFC.md) | Pendência | Validar assinatura durante a sobreposição e comportamento de rotações sucessivas em 24 h | TRANSCRICAO | [09:21] Sofia, [09:22] Sofia, [09:46] Sofia |
 | RFC-OPEN-07 | [docs/RFC.md](RFC.md) | Pendência | Classificar respostas fora de 2xx para retry ou DLQ. Timeout segue para retry | TRANSCRICAO | [09:15] Diego, [09:18] Diego, [09:42] Diego |
+| RFC-OPEN-08 | [docs/RFC.md](RFC.md) | Pendência | Decidir se o backoff deve bloquear eventos posteriores do mesmo pedido e endpoint com um único worker | TRANSCRICAO | [09:12] Diego, [09:13] Larissa, [09:15] Diego |
 | RFC-PROP-01 | [docs/RFC.md](RFC.md) | Decisão | Captura atômica, filtro na inserção e snapshot | TRANSCRICAO | [09:34] Bruno, [09:40] Bruno, [09:52] Larissa |
 | RFC-PROP-02 | [docs/RFC.md](RFC.md) | Decisão | Worker único separado, polling de 2 s e lotes pequenos | TRANSCRICAO | [09:08] Diego, [09:09] Diego, [09:11] Diego, [09:12] Diego, [09:30] Bruno |
 | RFC-PROP-03 | [docs/RFC.md](RFC.md) | Decisão | At-least-once, backoff limitado, DLQ e replay auditado por ADMIN | TRANSCRICAO | [09:17] Larissa, [09:18] Diego, [09:26] Larissa, [09:36] Sofia |
@@ -91,6 +104,7 @@ O inventário inclui IDs explícitos, decisões principais dos ADRs e itens subs
 | FDD-CONTRATO-01 | [docs/FDD.md](FDD.md) | Contrato | API autenticada de CRUD, rotação, histórico e replay. Rotas e respostas não explicitadas na reunião são propostas | TRANSCRICAO | [09:21] Sofia, [09:31] Marcos, [09:32] Larissa, [09:33] Bruno, [09:34] Marcos, [09:35] Diego, [09:36] Larissa |
 | FDD-CONTRATO-01-CODIGO | [docs/FDD.md](FDD.md) | Referência de código | Base existente para FDD-CONTRATO-01 | CODIGO | [src/routes/index.ts](../src/routes/index.ts) |
 | FDD-CONTRATO-02 | [docs/FDD.md](FDD.md) | Contrato | JSON do evento e headers. Encoding e duas assinaturas para uma rotação são propostas. Rotações sucessivas seguem em revisão | TRANSCRICAO | [09:22] Sofia, [09:43] Diego, [09:44] Diego, [09:44] Sofia, [09:52] Larissa |
+| FDD-CONTRATO-03 | [docs/FDD.md](FDD.md) | Contrato proposto | Histórico das últimas 100 tentativas finalizadas, com snapshot, resposta e duração quando registradas e resultados de timeout e recuperação | TRANSCRICAO | [09:34] Marcos, [09:42] Diego, [09:52] Larissa |
 | FDD-ERRO-01 | [docs/FDD.md](FDD.md) | Contrato | Códigos WEBHOOK_* propostos e envelope existente de AppError | TRANSCRICAO | [09:28] Bruno, [09:29] Larissa |
 | FDD-ERRO-01-CODIGO | [docs/FDD.md](FDD.md) | Referência de código | Base existente para FDD-ERRO-01 | CODIGO | [src/middlewares/error.middleware.ts](../src/middlewares/error.middleware.ts), [src/shared/errors/app-error.ts](../src/shared/errors/app-error.ts) |
 | FDD-DADOS-01 | [docs/FDD.md](FDD.md) | Proposta de modelagem | Configuração, outbox, histórico e DLQ. Uma linha por destino, índices e desativação são detalhes de desenho | TRANSCRICAO | [09:08] Diego, [09:18] Diego, [09:21] Bruno, [09:21] Sofia, [09:34] Marcos, [09:51] Larissa, [09:52] Larissa |
